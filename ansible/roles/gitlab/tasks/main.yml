@@ -1,0 +1,73 @@
+---
+- name: Validate required GitLab variables
+  ansible.builtin.assert:
+    that:
+      - gitlab_initial_root_password is defined
+      - gitlab_initial_root_password | length >= 12
+    fail_msg: >-
+      Supply gitlab_initial_root_password through an encrypted vault or a
+      runtime extra variable; never commit it.
+  no_log: true
+
+- name: Verify Docker is available
+  ansible.builtin.command: docker info
+  changed_when: false
+
+- name: Create GitLab persistent directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ gitlab_base_directory }}"
+    - "{{ gitlab_base_directory }}/config"
+    - "{{ gitlab_base_directory }}/logs"
+    - "{{ gitlab_base_directory }}/data"
+    - "{{ gitlab_base_directory }}/secrets"
+
+- name: Install initial root password secret
+  ansible.builtin.copy:
+    content: "{{ gitlab_initial_root_password }}\n"
+    dest: "{{ gitlab_base_directory }}/secrets/root_password"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart GitLab stack
+
+- name: Install GitLab Compose definition
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ gitlab_base_directory }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart GitLab stack
+
+- name: Start GitLab
+  community.docker.docker_compose_v2:
+    project_src: "{{ gitlab_base_directory }}"
+    files:
+      - compose.yml
+    pull: missing
+    state: present
+    wait: true
+    wait_timeout: 900
+
+- name: Flush restart handler before health check
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for GitLab health endpoint
+  ansible.builtin.uri:
+    url: "{{ gitlab_health_url }}"
+    method: GET
+    return_content: true
+    status_code: 200
+  register: gitlab_health
+  until: "'GitLab OK' in gitlab_health.content"
+  retries: 90
+  delay: 10
+  changed_when: false
+

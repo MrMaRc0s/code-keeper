@@ -1,0 +1,7 @@
+---
+- name: Restart GitLab stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ gitlab_base_directory }}"
+    state: restarted
+  listen: Restart GitLab stack
+

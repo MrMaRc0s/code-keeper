@@ -1,0 +1,39 @@
+---
+services:
+  gitlab:
+    image: "{{ gitlab_image }}"
+    container_name: "{{ gitlab_container_name }}"
+    hostname: "{{ gitlab_http_bind_address }}"
+    restart: unless-stopped
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url '{{ gitlab_external_url }}'
+        gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+        gitlab_rails['initial_root_password'] = File.read('/run/secrets/gitlab_root_password').strip
+        gitlab_rails['usage_ping_enabled'] = false
+    ports:
+      - "{{ gitlab_http_bind_address }}:{{ gitlab_http_port }}:{{ gitlab_http_port }}"
+      - "{{ gitlab_http_bind_address }}:{{ gitlab_ssh_port }}:22"
+    volumes:
+      - "{{ gitlab_base_directory }}/config:/etc/gitlab:Z"
+      - "{{ gitlab_base_directory }}/logs:/var/log/gitlab:Z"
+      - "{{ gitlab_base_directory }}/data:/var/opt/gitlab:Z"
+    secrets:
+      - gitlab_root_password
+    shm_size: "256m"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:{{ gitlab_http_port }}/-/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 10m
+    logging:
+      driver: local
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+secrets:
+  gitlab_root_password:
+    file: "{{ gitlab_base_directory }}/secrets/root_password"
+

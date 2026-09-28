@@ -1,0 +1,11 @@
+---
+- name: Deploy self-hosted GitLab
+  hosts: gitlab_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    gitlab_initial_root_password: "{{ vault_gitlab_root_password }}"
+
+  roles:
+    - role: gitlab

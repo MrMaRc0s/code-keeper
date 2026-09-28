@@ -1,0 +1,10 @@
+---
+gitlab_image: "gitlab/gitlab-ce:19.4.1-ce.0"
+gitlab_container_name: "code-keeper-gitlab"
+gitlab_base_directory: "/srv/code-keeper/gitlab"
+gitlab_http_bind_address: "{{ ansible_host }}"
+gitlab_http_port: 8929
+gitlab_ssh_port: 2224
+gitlab_external_url: "http://{{ gitlab_http_bind_address }}:{{ gitlab_http_port }}"
+gitlab_health_url: "http://127.0.0.1:{{ gitlab_http_port }}/-/health"
+
