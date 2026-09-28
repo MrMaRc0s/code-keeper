@@ -1,0 +1,6 @@
+---
+# Copy to ansible/vault.yml and encrypt it with ansible-vault before use.
+vault_gitlab_root_password: "replace-me"
+vault_gitlab_bootstrap_token: "replace-me"
+vault_gitlab_runner_token: "replace-me"
+

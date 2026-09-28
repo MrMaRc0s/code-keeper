@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+
+ansible/inventories/hosts.yml
+ansible/vault.yml
+*.retry
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+gitlab-backups/
+.cache/
+
