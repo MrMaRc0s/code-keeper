@@ -58,4 +58,7 @@ containerize:
       --ignore-unfixed "$IMAGE_URI"
     - docker push "$IMAGE_URI"
   rules:
-    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+    - if: >-
+        $CI_COMMIT_REF_PROTECTED == "true" &&
+        $AWS_ACCESS_KEY_ID && $AWS_SECRET_ACCESS_KEY &&
+        $AWS_REGION && $ECR_REGISTRY
