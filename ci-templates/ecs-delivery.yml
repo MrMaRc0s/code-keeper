@@ -1,0 +1,125 @@
+# Reusable deploy/verify stages for any of the three application
+# repositories. Included alongside Developer A's build/test/scan template
+# (ci-templates/python-application.yml + security.yml - not built yet,
+# that's their deliverable, not this one) via:
+#
+#   include:
+#     - project: 'crud-master/code-keeper'
+#       ref: main
+#       file: 'ci-templates/python-application.yml'
+#     - project: 'crud-master/code-keeper'
+#       ref: main
+#       file: 'ci-templates/security.yml'
+#     - project: 'crud-master/code-keeper'
+#       ref: main
+#       file: 'ci-templates/ecs-delivery.yml'
+#
+# Each consuming repo then defines the real jobs by extending the hidden
+# templates below with its own SERVICE_NAME/CONTAINER_NAME (see
+# api-gateway-app/.gitlab-ci.yml and billing-app/.gitlab-ci.yml for
+# worked examples).
+#
+# Requires (Developer A's GitLab bootstrap item, not this file):
+#   - AWS_REGION, ECR_REGISTRY, AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION,
+#     STAGING_API_URL, PRODUCTION_API_URL as protected/masked variables
+#     (docs/contracts.md).
+#   - A job token allowlist entry so this project's CI_JOB_TOKEN is
+#     accepted by code-keeper's Repository Files API - that's how
+#     deploy-ecs-service.sh gets fetched at runtime; `include:` only pulls
+#     in YAML job definitions, not arbitrary files from the included
+#     project.
+
+stages:
+  - deploy_staging
+  - verify_staging
+  - approve_production
+  - deploy_production
+  - verify_production
+
+variables:
+  DEPLOY_SCRIPT_URL: "${CI_API_V4_URL}/projects/crud-master%2Fcode-keeper/repository/files/scripts%2Fdeploy-ecs-service.sh/raw?ref=main"
+
+.aws_oidc_auth:
+  image:
+    name: public.ecr.aws/aws-cli/aws-cli:2.19.0
+    entrypoint: [""]
+  id_tokens:
+    AWS_WEB_IDENTITY_TOKEN:
+      aud: https://sts.amazonaws.com
+  before_script:
+    - echo "$AWS_WEB_IDENTITY_TOKEN" > /tmp/web_identity_token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
+    - export AWS_ROLE_SESSION_NAME="gitlab-ci-${CI_PIPELINE_ID}"
+    - curl --silent --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "${DEPLOY_SCRIPT_URL}" -o /usr/local/bin/deploy-ecs-service.sh
+    - chmod +x /usr/local/bin/deploy-ecs-service.sh
+
+.protected_main_only:
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main"'
+
+.deploy_staging_template:
+  extends: [.aws_oidc_auth, .protected_main_only]
+  stage: deploy_staging
+  environment:
+    name: staging
+  resource_group: "staging-${SERVICE_NAME}"
+  variables:
+    AWS_ROLE_ARN: "$AWS_ROLE_ARN_STAGING"
+  script:
+    # The exact image built and scanned earlier in this same pipeline -
+    # never rebuilt for this stage.
+    - deploy-ecs-service.sh staging "${SERVICE_NAME}" "${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}" "${CONTAINER_NAME}"
+
+.verify_staging_template:
+  extends: [.aws_oidc_auth, .protected_main_only]
+  stage: verify_staging
+  environment:
+    name: staging
+  variables:
+    AWS_ROLE_ARN: "$AWS_ROLE_ARN_STAGING"
+  script:
+    - >
+      test "$(aws ecs describe-services --cluster cloud-design-staging-cluster --services "${SERVICE_NAME}"
+      --query 'services[0].deployments[0].rolloutState' --output text)" = "COMPLETED"
+    - |
+      if [ -n "${SMOKE_TEST_URL:-}" ]; then
+        curl --silent --fail "${SMOKE_TEST_URL}"
+      fi
+
+.approve_production_template:
+  stage: approve_production
+  extends: [.protected_main_only]
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main"'
+      when: manual
+  script:
+    - echo "Approved for production by ${GITLAB_USER_LOGIN}"
+
+.deploy_production_template:
+  extends: [.aws_oidc_auth, .protected_main_only]
+  stage: deploy_production
+  environment:
+    name: production
+  resource_group: "production-${SERVICE_NAME}"
+  variables:
+    AWS_ROLE_ARN: "$AWS_ROLE_ARN_PRODUCTION"
+  script:
+    # Same CI_COMMIT_SHA already verified in staging above - promotion,
+    # not a rebuild.
+    - deploy-ecs-service.sh production "${SERVICE_NAME}" "${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}" "${CONTAINER_NAME}"
+
+.verify_production_template:
+  extends: [.aws_oidc_auth, .protected_main_only]
+  stage: verify_production
+  environment:
+    name: production
+  variables:
+    AWS_ROLE_ARN: "$AWS_ROLE_ARN_PRODUCTION"
+  script:
+    - >
+      test "$(aws ecs describe-services --cluster cloud-design-production-cluster --services "${SERVICE_NAME}"
+      --query 'services[0].deployments[0].rolloutState' --output text)" = "COMPLETED"
+    - |
+      if [ -n "${SMOKE_TEST_URL:-}" ]; then
+        curl --silent --fail "${SMOKE_TEST_URL}"
+      fi
