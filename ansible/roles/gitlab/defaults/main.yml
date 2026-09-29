@@ -6,5 +6,4 @@ gitlab_http_bind_address: "{{ ansible_host }}"
 gitlab_http_port: 8929
 gitlab_ssh_port: 2224
 gitlab_external_url: "http://{{ gitlab_http_bind_address }}:{{ gitlab_http_port }}"
-gitlab_health_url: "http://127.0.0.1:{{ gitlab_http_port }}/-/health"
-
+gitlab_health_url: "http://{{ gitlab_http_bind_address }}:{{ gitlab_http_port }}/users/sign_in"

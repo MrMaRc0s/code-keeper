@@ -1,0 +1,101 @@
+---
+- name: Validate GitLab Runner authentication token
+  ansible.builtin.assert:
+    that:
+      - gitlab_runner_auth_token is defined
+      - gitlab_runner_auth_token | length > 20
+      - gitlab_runner_auth_token is match('^glrt-')
+    fail_msg: >-
+      Create a protected group Runner in GitLab and store its glrt- token as
+      vault_gitlab_runner_token in the encrypted ansible/vault.yml file.
+  no_log: true
+
+- name: Verify Docker is available
+  ansible.builtin.command: docker info
+  changed_when: false
+
+- name: Create GitLab Runner directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ gitlab_runner_base_directory }}"
+      mode: "0755"
+    - path: "{{ gitlab_runner_base_directory }}/config"
+      mode: "0700"
+
+- name: Install GitLab Runner Compose definition
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ gitlab_runner_base_directory }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Check existing Runner configuration
+  ansible.builtin.stat:
+    path: "{{ gitlab_runner_base_directory }}/config/config.toml"
+  register: gitlab_runner_config
+
+- name: Register GitLab Runner
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - host
+      - --volume
+      - "{{ gitlab_runner_base_directory }}/config:/etc/gitlab-runner:Z"
+      - "{{ gitlab_runner_image }}"
+      - register
+      - --non-interactive
+      - --url
+      - "{{ gitlab_runner_url }}"
+      - --token
+      - "{{ gitlab_runner_auth_token }}"
+      - --name
+      - "{{ gitlab_runner_name }}"
+      - --executor
+      - "{{ gitlab_runner_executor }}"
+      - --docker-image
+      - "{{ gitlab_runner_default_image }}"
+      - --docker-volumes
+      - "/var/run/docker.sock:/var/run/docker.sock"
+  when: not gitlab_runner_config.stat.exists
+  no_log: true
+
+- name: Limit concurrent Runner jobs
+  ansible.builtin.lineinfile:
+    path: "{{ gitlab_runner_base_directory }}/config/config.toml"
+    regexp: '^concurrent\s*='
+    line: "concurrent = {{ gitlab_runner_concurrent_jobs }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Start GitLab Runner
+  community.docker.docker_compose_v2:
+    project_src: "{{ gitlab_runner_base_directory }}"
+    files:
+      - compose.yml
+    pull: missing
+    state: present
+    wait: false
+
+- name: Verify registered GitLab Runner
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ gitlab_runner_container_name }}"
+      - gitlab-runner
+      - verify
+  register: gitlab_runner_verify
+  retries: 12
+  delay: 5
+  until: gitlab_runner_verify.rc == 0
+  changed_when: false

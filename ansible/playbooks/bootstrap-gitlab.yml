@@ -1,0 +1,10 @@
+---
+- name: Bootstrap GitLab delivery projects
+  hosts: gitlab_servers
+  gather_facts: false
+
+  vars:
+    gitlab_bootstrap_api_token: "{{ vault_gitlab_bootstrap_token }}"
+
+  roles:
+    - role: gitlab_bootstrap

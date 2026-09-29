@@ -1,0 +1,149 @@
+---
+- name: Validate GitLab bootstrap token
+  ansible.builtin.assert:
+    that:
+      - gitlab_bootstrap_api_token is defined
+      - gitlab_bootstrap_api_token | length > 20
+      - gitlab_bootstrap_api_token != "replace-me"
+    fail_msg: >-
+      Create a GitLab personal access token with the api scope and store it as
+      vault_gitlab_bootstrap_token in the encrypted ansible/vault.yml file.
+  no_log: true
+
+- name: Look up delivery group
+  ansible.builtin.uri:
+    url: "{{ gitlab_bootstrap_api_url }}/groups/{{ gitlab_bootstrap_group_path }}"
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    status_code:
+      - 200
+      - 404
+    return_content: true
+  register: gitlab_group_lookup
+  changed_when: false
+  no_log: true
+
+- name: Create delivery group
+  ansible.builtin.uri:
+    url: "{{ gitlab_bootstrap_api_url }}/groups"
+    method: POST
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    body_format: json
+    body:
+      name: "{{ gitlab_bootstrap_group_name }}"
+      path: "{{ gitlab_bootstrap_group_path }}"
+      visibility: "{{ gitlab_bootstrap_visibility }}"
+    status_code: 201
+    return_content: true
+  register: gitlab_group_created
+  when: gitlab_group_lookup.status == 404
+  no_log: true
+
+- name: Select delivery group ID
+  ansible.builtin.set_fact:
+    gitlab_bootstrap_group_id: >-
+      {{ (gitlab_group_created.json.id
+          if gitlab_group_lookup.status == 404
+          else gitlab_group_lookup.json.id) | int }}
+
+- name: Look up delivery projects
+  ansible.builtin.uri:
+    url: >-
+      {{ gitlab_bootstrap_api_url }}/projects/{{
+      (gitlab_bootstrap_group_path ~ '%2F' ~ item) }}
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    status_code:
+      - 200
+      - 404
+    return_content: true
+  loop: "{{ gitlab_bootstrap_projects }}"
+  loop_control:
+    label: "{{ item }}"
+  register: gitlab_project_lookups
+  changed_when: false
+  no_log: true
+
+- name: Create missing delivery projects
+  ansible.builtin.uri:
+    url: "{{ gitlab_bootstrap_api_url }}/projects"
+    method: POST
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    body_format: json
+    body:
+      name: "{{ item.item }}"
+      path: "{{ item.item }}"
+      namespace_id: "{{ gitlab_bootstrap_group_id }}"
+      visibility: "{{ gitlab_bootstrap_visibility }}"
+      initialize_with_readme: "{{ item.item != 'code-keeper' }}"
+      default_branch: "{{ gitlab_bootstrap_default_branch }}"
+    status_code: 201
+  loop: "{{ gitlab_project_lookups.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.status == 404
+  no_log: true
+
+- name: Refresh delivery project details
+  ansible.builtin.uri:
+    url: >-
+      {{ gitlab_bootstrap_api_url }}/projects/{{
+      (gitlab_bootstrap_group_path ~ '%2F' ~ item) }}
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    status_code: 200
+    return_content: true
+  loop: "{{ gitlab_bootstrap_projects }}"
+  loop_control:
+    label: "{{ item }}"
+  register: gitlab_projects
+  changed_when: false
+  no_log: true
+
+- name: Look up protected main branches
+  ansible.builtin.uri:
+    url: >-
+      {{ gitlab_bootstrap_api_url }}/projects/{{ item.json.id
+      }}/protected_branches/{{ gitlab_bootstrap_default_branch }}
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    status_code:
+      - 200
+      - 404
+    return_content: true
+  loop: "{{ gitlab_projects.results }}"
+  loop_control:
+    label: "{{ item.json.path_with_namespace }}"
+  register: gitlab_branch_protection
+  changed_when: false
+  when: not item.json.empty_repo
+  no_log: true
+
+- name: Protect main branches
+  ansible.builtin.uri:
+    url: >-
+      {{ gitlab_bootstrap_api_url }}/projects/{{ item.item.json.id
+      }}/protected_branches
+    method: POST
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    body_format: json
+    body:
+      name: "{{ gitlab_bootstrap_default_branch }}"
+      push_access_level: 0
+      merge_access_level: 40
+      allow_force_push: false
+    status_code: 201
+  loop: "{{ gitlab_branch_protection.results }}"
+  loop_control:
+    label: "{{ item.item.json.path_with_namespace }}"
+  when:
+    - not (item.skipped | default(false))
+    - item.status == 404
+  no_log: true

@@ -13,19 +13,30 @@
   ansible.builtin.command: docker info
   changed_when: false
 
-- name: Create GitLab persistent directories
+- name: Create GitLab base directory
+  ansible.builtin.file:
+    path: "{{ gitlab_base_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create GitLab-managed persistent directories
   ansible.builtin.file:
     path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ gitlab_base_directory }}/config"
+    - "{{ gitlab_base_directory }}/logs"
+    - "{{ gitlab_base_directory }}/data"
+
+- name: Create protected GitLab secrets directory
+  ansible.builtin.file:
+    path: "{{ gitlab_base_directory }}/secrets"
     state: directory
     owner: root
     group: root
     mode: "0700"
-  loop:
-    - "{{ gitlab_base_directory }}"
-    - "{{ gitlab_base_directory }}/config"
-    - "{{ gitlab_base_directory }}/logs"
-    - "{{ gitlab_base_directory }}/data"
-    - "{{ gitlab_base_directory }}/secrets"
 
 - name: Install initial root password secret
   ansible.builtin.copy:
@@ -35,7 +46,6 @@
     group: root
     mode: "0600"
   no_log: true
-  notify: Restart GitLab stack
 
 - name: Install GitLab Compose definition
   ansible.builtin.template:
@@ -44,7 +54,6 @@
     owner: root
     group: root
     mode: "0600"
-  notify: Restart GitLab stack
 
 - name: Start GitLab
   community.docker.docker_compose_v2:
@@ -53,11 +62,7 @@
       - compose.yml
     pull: missing
     state: present
-    wait: true
-    wait_timeout: 900
-
-- name: Flush restart handler before health check
-  ansible.builtin.meta: flush_handlers
+    wait: false
 
 - name: Wait for GitLab health endpoint
   ansible.builtin.uri:
@@ -66,8 +71,7 @@
     return_content: true
     status_code: 200
   register: gitlab_health
-  until: "'GitLab OK' in gitlab_health.content"
+  until: gitlab_health.status == 200
   retries: 90
   delay: 10
   changed_when: false
-
