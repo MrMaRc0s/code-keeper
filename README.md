@@ -32,6 +32,16 @@ ansible-playbook playbooks/deploy-gitlab.yml \
   --extra-vars '@vault.yml'
 ```
 
+After signing in as `root`, create a personal access token with the `api`
+scope, save it as `vault_gitlab_bootstrap_token` in the encrypted vault, and
+bootstrap the private group, repositories, and protected branches:
+
+```bash
+ansible-playbook playbooks/bootstrap-gitlab.yml \
+  --ask-vault-pass \
+  --extra-vars '@vault.yml'
+```
+
 The submitted inventory and vault files contain placeholders only. The real
 files are ignored by Git.
 
