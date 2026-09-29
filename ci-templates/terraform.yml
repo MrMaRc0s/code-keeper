@@ -1,0 +1,238 @@
+# Reusable Terraform delivery pipeline for the cloud-infrastructure
+# repository. Included via:
+#
+#   include:
+#     - project: 'crud-master/code-keeper'
+#       ref: main
+#       file: 'ci-templates/terraform.yml'
+#
+# Expects these protected/masked GitLab CI/CD variables (see
+# docs/contracts.md): AWS_REGION, TF_STATE_BUCKET, TF_ROLE_ARN_STAGING,
+# TF_ROLE_ARN_PRODUCTION (the two Terraform-job roles from
+# shared/iam.tf's terraform_role_arns output - contracts.md needs these
+# two names added, see the plan notes), and CONFIRM_DESTROY (unset by
+# default; the destroy jobs check it explicitly and refuse to run without
+# it, on top of GitLab's own manual-job gate).
+
+stages:
+  - init
+  - validate
+  - plan
+  - apply_staging
+  - verify_staging
+  - approve_production
+  - apply_production
+  - verify_production
+  - destroy
+
+variables:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_CLI_ARGS: "-no-color"
+
+.terraform_image:
+  image: hashicorp/terraform:1.16
+
+# GitLab issues a fresh, short-lived JWT per job via id_tokens - never a
+# long-lived credential in a CI/CD variable. The `environment:` block on
+# each job (below) makes GitLab set its `environment` claim inside that
+# JWT, which is exactly what shared/iam.tf's ECS-deploy trust policies
+# match on; the two Terraform-job roles instead match on this project's
+# protected main branch, since Terraform itself isn't tied to one
+# environment's deploy the way an app pipeline's deploy stage is.
+.aws_oidc_auth:
+  id_tokens:
+    AWS_WEB_IDENTITY_TOKEN:
+      aud: https://sts.amazonaws.com
+  before_script:
+    - echo "$AWS_WEB_IDENTITY_TOKEN" > /tmp/web_identity_token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
+    - export AWS_ROLE_SESSION_NAME="gitlab-ci-${CI_PIPELINE_ID}"
+
+.protected_main_only:
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main"'
+
+init_staging:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: init
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_STAGING"
+  script:
+    - cd environments/staging
+    - terraform fmt -check -recursive ../..
+    - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+  artifacts:
+    paths:
+      - environments/staging/.terraform
+    expire_in: 1 hour
+
+init_production:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: init
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_PRODUCTION"
+  script:
+    - cd environments/production
+    - terraform fmt -check -recursive ../..
+    - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+  artifacts:
+    paths:
+      - environments/production/.terraform
+    expire_in: 1 hour
+
+validate_staging:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: validate
+  needs: ["init_staging"]
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_STAGING"
+  script:
+    - cd environments/staging
+    - terraform validate
+
+validate_production:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: validate
+  needs: ["init_production"]
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_PRODUCTION"
+  script:
+    - cd environments/production
+    - terraform validate
+
+plan_staging:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: plan
+  needs: ["validate_staging"]
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_STAGING"
+    TF_VAR_state_bucket: "$TF_STATE_BUCKET"
+  script:
+    - cd environments/staging
+    - terraform plan -var="image_tag=${CI_COMMIT_SHA}" -out=staging.tfplan
+  artifacts:
+    paths:
+      - environments/staging/staging.tfplan
+    expire_in: 1 day
+
+plan_production:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: plan
+  needs: ["validate_production"]
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_PRODUCTION"
+    TF_VAR_state_bucket: "$TF_STATE_BUCKET"
+  script:
+    - cd environments/production
+    # Plans against the exact same commit SHA staging will verify -
+    # production never gets a plan built from a different image than the
+    # one that actually passed staging's checks.
+    - terraform plan -var="image_tag=${CI_COMMIT_SHA}" -out=production.tfplan
+  artifacts:
+    paths:
+      - environments/production/production.tfplan
+    expire_in: 1 day
+
+apply_staging:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: apply_staging
+  needs: ["plan_staging"]
+  resource_group: terraform-staging
+  environment:
+    name: staging
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_STAGING"
+  script:
+    - cd environments/staging
+    - terraform apply -auto-approve staging.tfplan
+
+verify_staging:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: verify_staging
+  needs: ["apply_staging"]
+  environment:
+    name: staging
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_STAGING"
+  script:
+    - cd environments/staging
+    - CLUSTER=$(terraform output -raw ecs_cluster_name)
+    - >
+      for SERVICE in inventory-app billing-app api-gateway-app rabbit-queue billing-database inventory-database; do
+        STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0].deployments[0].rolloutState' --output text 2>/dev/null || echo "MISSING")
+        echo "$SERVICE: $STATUS"
+        if [ "$STATUS" != "COMPLETED" ] && [ "$STATUS" != "MISSING" ]; then exit 1; fi
+      done
+
+approve_production:
+  stage: approve_production
+  needs: ["verify_staging"]
+  extends: [.protected_main_only]
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main"'
+      when: manual
+  script:
+    - echo "Approved for production by ${GITLAB_USER_LOGIN}"
+
+apply_production:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: apply_production
+  needs: ["approve_production", "plan_production"]
+  resource_group: terraform-production
+  environment:
+    name: production
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_PRODUCTION"
+  script:
+    - cd environments/production
+    - terraform apply -auto-approve production.tfplan
+
+verify_production:
+  extends: [.terraform_image, .aws_oidc_auth, .protected_main_only]
+  stage: verify_production
+  needs: ["apply_production"]
+  environment:
+    name: production
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_PRODUCTION"
+  script:
+    - cd environments/production
+    - CLUSTER=$(terraform output -raw ecs_cluster_name)
+    - >
+      for SERVICE in inventory-app billing-app api-gateway-app rabbit-queue billing-database inventory-database; do
+        STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0].deployments[0].rolloutState' --output text 2>/dev/null || echo "MISSING")
+        echo "$SERVICE: $STATUS"
+        if [ "$STATUS" != "COMPLETED" ] && [ "$STATUS" != "MISSING" ]; then exit 1; fi
+      done
+
+# Never part of the normal pipeline flow: gated by both GitLab's manual-job
+# mechanism and an explicit CONFIRM_DESTROY variable that must be set by
+# hand at trigger time, so a stray click can't tear down an environment.
+.destroy_template:
+  extends: [.terraform_image, .aws_oidc_auth]
+  stage: destroy
+  rules:
+    - if: '$CONFIRM_DESTROY == "yes"'
+      when: manual
+    - when: never
+
+destroy_staging:
+  extends: [.destroy_template]
+  resource_group: terraform-staging
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_STAGING"
+  script:
+    - cd environments/staging
+    - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform destroy -auto-approve -var="image_tag=unused"
+
+destroy_production:
+  extends: [.destroy_template]
+  resource_group: terraform-production
+  variables:
+    AWS_ROLE_ARN: "$TF_ROLE_ARN_PRODUCTION"
+  script:
+    - cd environments/production
+    - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform destroy -auto-approve -var="image_tag=unused"
