@@ -14,7 +14,9 @@ The final platform contains four independent GitLab projects:
 This control repository contains the Ansible roles used to deploy GitLab and
 GitLab Runner, reusable pipeline templates, deployment scripts, and the audit
 runbook. Application source and Terraform infrastructure remain in their own
-repositories as required by the subject.
+repositories as required by the subject. It is also mirrored into the
+self-hosted `crud-master/code-keeper` project so the four delivery repositories
+can include its reusable pipeline templates.
 
 ## Current milestone
 

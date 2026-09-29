@@ -4,6 +4,7 @@ gitlab_bootstrap_api_url: "{{ gitlab_bootstrap_external_url }}/api/v4"
 gitlab_bootstrap_group_name: "CRUD Master"
 gitlab_bootstrap_group_path: "crud-master"
 gitlab_bootstrap_projects:
+  - code-keeper
   - inventory-app
   - billing-app
   - api-gateway-app
