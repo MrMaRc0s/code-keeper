@@ -1,0 +1,9 @@
+---
+gitlab_runner_image: "gitlab/gitlab-runner:alpine-v19.4.1"
+gitlab_runner_container_name: "code-keeper-runner"
+gitlab_runner_base_directory: "/srv/code-keeper/runner"
+gitlab_runner_url: "http://{{ ansible_host }}:8929"
+gitlab_runner_name: "code-keeper-docker-runner"
+gitlab_runner_executor: docker
+gitlab_runner_default_image: "docker:29.0.0-cli"
+gitlab_runner_concurrent_jobs: 2

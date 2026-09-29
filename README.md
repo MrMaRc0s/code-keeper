@@ -42,6 +42,15 @@ ansible-playbook playbooks/bootstrap-gitlab.yml \
   --extra-vars '@vault.yml'
 ```
 
+Create a protected group Runner in GitLab with the `docker-private` tag, store
+its `glrt-` authentication token as `vault_gitlab_runner_token`, and deploy it:
+
+```bash
+ansible-playbook playbooks/deploy-runner.yml \
+  --ask-vault-pass \
+  --extra-vars '@vault.yml'
+```
+
 The submitted inventory and vault files contain placeholders only. The real
 files are ignored by Git.
 

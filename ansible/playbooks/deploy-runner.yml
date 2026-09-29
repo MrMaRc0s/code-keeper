@@ -1,0 +1,11 @@
+---
+- name: Deploy private GitLab Runner
+  hosts: gitlab_runners
+  become: true
+  gather_facts: true
+
+  vars:
+    gitlab_runner_auth_token: "{{ vault_gitlab_runner_token }}"
+
+  roles:
+    - role: gitlab_runner
