@@ -14,3 +14,4 @@ ansible/vault.yml
 gitlab-backups/
 .cache/
 
+ansible/.vault_pass
