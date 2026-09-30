@@ -59,6 +59,9 @@ variables:
 init_staging:
   extends: [.terraform_image, .aws_credentials, .protected_main_only]
   stage: init
+  environment:
+    name: staging
+    action: prepare
   script:
     - cd environments/staging
     - terraform fmt -check -recursive ../..
@@ -67,6 +70,9 @@ init_staging:
 init_production:
   extends: [.terraform_image, .aws_credentials, .protected_main_only]
   stage: init
+  environment:
+    name: production
+    action: prepare
   script:
     - cd environments/production
     - terraform fmt -check -recursive ../..
@@ -76,6 +82,9 @@ validate_staging:
   extends: [.terraform_image, .aws_credentials, .protected_main_only]
   stage: validate
   needs: ["init_staging"]
+  environment:
+    name: staging
+    action: prepare
   script:
     - cd environments/staging
     - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
@@ -85,6 +94,9 @@ validate_production:
   extends: [.terraform_image, .aws_credentials, .protected_main_only]
   stage: validate
   needs: ["init_production"]
+  environment:
+    name: production
+    action: prepare
   script:
     - cd environments/production
     - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
@@ -94,6 +106,9 @@ plan_staging:
   extends: [.terraform_image, .aws_credentials, .protected_main_only]
   stage: plan
   needs: ["validate_staging"]
+  environment:
+    name: staging
+    action: prepare
   variables:
     TF_VAR_state_bucket: "$TF_STATE_BUCKET"
   script:
@@ -110,6 +125,9 @@ plan_production:
   extends: [.terraform_image, .aws_credentials, .protected_main_only]
   stage: plan
   needs: ["validate_production"]
+  environment:
+    name: production
+    action: prepare
   variables:
     TF_VAR_state_bucket: "$TF_STATE_BUCKET"
   script:
@@ -203,6 +221,9 @@ verify_production:
 destroy_staging:
   extends: [.destroy_template]
   resource_group: terraform-staging
+  environment:
+    name: staging
+    action: prepare
   script:
     - cd environments/staging
     - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
@@ -211,6 +232,9 @@ destroy_staging:
 destroy_production:
   extends: [.destroy_template]
   resource_group: terraform-production
+  environment:
+    name: production
+    action: prepare
   script:
     - cd environments/production
     - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
