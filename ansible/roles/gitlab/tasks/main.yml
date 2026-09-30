@@ -75,3 +75,31 @@
   retries: 90
   delay: 10
   changed_when: false
+
+- name: Check GitLab CI job token signing key
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ gitlab_container_name }}"
+      - gitlab-rails
+      - runner
+      - >-
+        puts Gitlab::CurrentSettings.ci_job_token_signing_key.present?
+  register: gitlab_ci_signing_key
+  changed_when: false
+
+- name: Initialize missing GitLab CI job token signing key
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ gitlab_container_name }}"
+      - gitlab-rails
+      - runner
+      - >-
+        settings = Gitlab::CurrentSettings.current_application_settings;
+        settings.ci_job_token_signing_key = OpenSSL::PKey::RSA.new(2048).to_pem;
+        settings.save!
+  when: gitlab_ci_signing_key.stdout | trim != 'true'
+  no_log: true
