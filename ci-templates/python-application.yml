@@ -52,12 +52,17 @@ containerize:
   script:
     - export IMAGE_URI="${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}"
     - docker build --pull --tag "$IMAGE_URI" .
-    - >-
-      docker run --rm --user 0:0
-      --volume /var/run/docker.sock:/var/run/docker.sock
-      aquasec/trivy:0.67.2 image --exit-code 1 --severity HIGH,CRITICAL
-      --ignore-unfixed "$IMAGE_URI"
+    # Publish the immutable candidate before scanning it remotely. Deployment
+    # jobs still cannot run unless Trivy accepts this exact SHA-tagged image.
     - docker push "$IMAGE_URI"
+    - >-
+      docker run --rm
+      --env AWS_ACCESS_KEY_ID
+      --env AWS_SECRET_ACCESS_KEY
+      --env AWS_REGION
+      --env AWS_SESSION_TOKEN
+      aquasec/trivy:0.67.2 image --exit-code 1 --severity HIGH,CRITICAL
+      --ignore-unfixed --skip-version-check "$IMAGE_URI"
   rules:
     - if: >-
         $CI_COMMIT_REF_PROTECTED == "true" &&
