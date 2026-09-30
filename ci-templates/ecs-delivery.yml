@@ -45,7 +45,7 @@ variables:
   tags:
     - docker-private
   before_script:
-    - apk add --no-cache aws-cli curl jq
+    - apk add --no-cache aws-cli bash curl jq
     - test -n "${AWS_ACCESS_KEY_ID:-}"
     - test -n "${AWS_SECRET_ACCESS_KEY:-}"
     - test -n "${AWS_REGION:-}"
