@@ -91,8 +91,8 @@ register_input=$(echo "$new_container_definitions" | jq '{
 } | with_entries(select(.value != null))')
 
 echo "Registering new task definition revision..."
-new_task_def_arn=$(echo "$register_input" | aws ecs register-task-definition \
-  --cli-input-json file:///dev/stdin \
+new_task_def_arn=$(aws ecs register-task-definition \
+  --cli-input-json "$register_input" \
   --query 'taskDefinition.taskDefinitionArn' \
   --output text)
 
