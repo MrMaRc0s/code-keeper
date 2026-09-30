@@ -1,7 +1,6 @@
 # Reusable deploy/verify stages for any of the three application
-# repositories. Included alongside Developer A's build/test/scan template
-# (ci-templates/python-application.yml + security.yml - not built yet,
-# that's their deliverable, not this one) via:
+# repositories. Included alongside the shared build/test/scan templates
+# (`ci-templates/python-application.yml` and `security.yml`) via:
 #
 #   include:
 #     - project: 'crud-master/code-keeper'

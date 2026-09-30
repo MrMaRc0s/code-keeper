@@ -1,8 +1,8 @@
 # Infrastructure: state, deployment, rollback, cost
 
-Developer B's documentation deliverable for the Terraform/AWS delivery
-side. Developer A's GitLab/Ansible operations and recovery docs live
-separately (see `docs/recovery.md` for that half).
+This document covers Terraform state, AWS delivery, rollback and cost control.
+GitLab and Runner recovery procedures are documented separately in
+`docs/recovery.md`.
 
 ## Repositories involved
 
