@@ -53,7 +53,8 @@ containerize:
     - export IMAGE_URI="${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}"
     - docker build --pull --tag "$IMAGE_URI" .
     - >-
-      docker run --rm --volume /var/run/docker.sock:/var/run/docker.sock
+      docker run --rm --user 0:0
+      --volume /var/run/docker.sock:/var/run/docker.sock
       aquasec/trivy:0.67.2 image --exit-code 1 --severity HIGH,CRITICAL
       --ignore-unfixed "$IMAGE_URI"
     - docker push "$IMAGE_URI"
