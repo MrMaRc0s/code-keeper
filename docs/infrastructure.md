@@ -8,7 +8,7 @@ separately (see `docs/recovery.md` for that half).
 
 - `cloud-infrastructure` — all Terraform: five modules
   (`network`, `security`, `compute-foundation`, `billing-workloads`,
-  `inventory-workloads`), one independent `shared/` state (ECR + IAM/OIDC),
+  `inventory-workloads`), one independent `shared/` state (ECR + CI IAM),
   and two thin `environments/staging` and `environments/production` roots.
 - `api-gateway-app`, `billing-app`, `inventory-app` — application source
   and their own pipelines. **Do not run Terraform for an ordinary

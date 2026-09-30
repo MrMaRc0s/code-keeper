@@ -80,11 +80,12 @@ jobs use GitLab `resource_group` locks to prevent concurrent changes.
 
 No value is stored in Git. The GitLab group or project settings provide:
 
+- `AWS_ACCESS_KEY_ID` (masked, protected and preferably environment-scoped)
+- `AWS_SECRET_ACCESS_KEY` (masked, protected and preferably environment-scoped)
 - `AWS_REGION`
-- `AWS_ROLE_ARN_STAGING`
-- `AWS_ROLE_ARN_PRODUCTION`
 - `ECR_REGISTRY`
 - `TF_STATE_BUCKET`
+- `TF_IMAGE_TAG` (an existing immutable baseline image tag used by Terraform)
 - `TF_LOCK_TABLE` when the selected backend requires it
 - `STAGING_API_URL`
 - `PRODUCTION_API_URL`
@@ -94,3 +95,7 @@ No value is stored in Git. The GitLab group or project settings provide:
 GitLab administrative and runner bootstrap secrets are supplied through
 Ansible Vault or runtime environment variables.
 
+AWS OIDC federation is not used because this self-hosted GitLab instance is
+reachable only through Tailscale over HTTP; AWS cannot securely discover it as
+a public HTTPS OIDC issuer. The stored credentials must therefore belong to a
+dedicated least-privilege CI identity and must never be committed to Git.
