@@ -86,7 +86,7 @@ variables:
   script:
     - >
       test "$(aws ecs describe-services --cluster cloud-design-staging-cluster --services "${SERVICE_NAME}"
-      --query 'services[0].deployments[0].rolloutState' --output text)" = "COMPLETED"
+      --query "services[0].deployments[?status=='PRIMARY'].rolloutState | [0]" --output text)" = "COMPLETED"
     - |
       if [ -n "${SMOKE_TEST_URL:-}" ]; then
         curl --silent --fail "${SMOKE_TEST_URL}"
@@ -130,7 +130,7 @@ variables:
   script:
     - >
       test "$(aws ecs describe-services --cluster cloud-design-production-cluster --services "${SERVICE_NAME}"
-      --query 'services[0].deployments[0].rolloutState' --output text)" = "COMPLETED"
+      --query "services[0].deployments[?status=='PRIMARY'].rolloutState | [0]" --output text)" = "COMPLETED"
     - |
       if [ -n "${SMOKE_TEST_URL:-}" ]; then
         curl --silent --fail "${SMOKE_TEST_URL}"
