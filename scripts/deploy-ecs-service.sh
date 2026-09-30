@@ -20,7 +20,7 @@ Environment variables:
   PROJECT_NAME   Defaults to "cloud-design".
   AWS_REGION     Required (or already exported for the AWS CLI).
 
-Requires: aws CLI, jq.
+Requires: bash, AWS CLI, jq.
 USAGE
 }
 

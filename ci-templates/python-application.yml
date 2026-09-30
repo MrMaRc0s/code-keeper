@@ -52,7 +52,7 @@ containerize:
   script:
     - export IMAGE_URI="${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}"
     - export ECR_REPOSITORY="cloud-design/${SERVICE_NAME}"
-    - docker build --pull --tag "$IMAGE_URI" .
+    - docker build --pull --no-cache --tag "$IMAGE_URI" .
     # Publish the immutable candidate before scanning it remotely. Deployment
     # jobs still cannot run unless Trivy accepts this exact SHA-tagged image.
     - >-
