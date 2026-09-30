@@ -1,0 +1,42 @@
+# Source and dependency scanning shared by all Python application repositories.
+
+.security_job:
+  image: python:3.11.13-slim-bookworm
+  stage: scan
+  tags:
+    - docker-private
+  cache:
+    key: "security-${CI_PROJECT_NAME}"
+    paths:
+      - .cache/pip
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+
+scan_source:
+  extends: .security_job
+  before_script:
+    - python -m pip install bandit==1.8.6
+  script:
+    - >-
+      bandit --recursive app server.py --severity-level high
+      --confidence-level high --format json --output bandit-report.json
+  artifacts:
+    when: always
+    paths:
+      - bandit-report.json
+    expire_in: 1 week
+
+scan_dependencies:
+  extends: .security_job
+  before_script:
+    - python -m pip install pip-audit==2.9.0
+  script:
+    - pip-audit --requirement requirements.txt --format json --output pip-audit-report.json
+  artifacts:
+    when: always
+    paths:
+      - pip-audit-report.json
+    expire_in: 1 week

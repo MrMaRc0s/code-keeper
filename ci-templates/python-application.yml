@@ -1,0 +1,64 @@
+# Reusable CI jobs for each CRUD Master Python application repository.
+# The consuming .gitlab-ci.yml defines the complete stage order and SERVICE_NAME.
+
+.python_job:
+  image: python:3.11.13-slim-bookworm
+  tags:
+    - docker-private
+  cache:
+    key: "pip-${CI_PROJECT_NAME}"
+    paths:
+      - .cache/pip
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  before_script:
+    - python --version
+    - python -m pip install --requirement requirements.txt
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+
+build:
+  extends: .python_job
+  stage: build
+  script:
+    - python -m compileall -q app server.py
+    - tar --create --gzip --file "${CI_PROJECT_NAME}-${CI_COMMIT_SHA}.tar.gz" app server.py requirements.txt
+  artifacts:
+    name: "${CI_PROJECT_NAME}-${CI_COMMIT_SHA}"
+    paths:
+      - "${CI_PROJECT_NAME}-${CI_COMMIT_SHA}.tar.gz"
+    expire_in: 1 day
+
+test:
+  extends: .python_job
+  stage: test
+  script:
+    - python -m unittest discover --start-directory tests --verbose
+
+containerize:
+  image: docker:29.0.0-cli
+  stage: containerize
+  tags:
+    - docker-private
+  variables:
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - test -n "${SERVICE_NAME:-}"
+    - test -n "${ECR_REGISTRY:-}"
+    - test -n "${AWS_REGION:-}"
+    - apk add --no-cache aws-cli
+    - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+  script:
+    - export IMAGE_URI="${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}"
+    - docker build --pull --tag "$IMAGE_URI" .
+    - >-
+      docker run --rm --volume /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy:0.67.2 image --exit-code 1 --severity HIGH,CRITICAL
+      --ignore-unfixed "$IMAGE_URI"
+    - docker push "$IMAGE_URI"
+  rules:
+    - if: >-
+        $CI_COMMIT_REF_PROTECTED == "true" &&
+        $AWS_ACCESS_KEY_ID && $AWS_SECRET_ACCESS_KEY &&
+        $AWS_REGION && $ECR_REGISTRY

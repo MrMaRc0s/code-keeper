@@ -18,8 +18,7 @@ services:
       - "{{ gitlab_base_directory }}/config:/etc/gitlab:Z"
       - "{{ gitlab_base_directory }}/logs:/var/log/gitlab:Z"
       - "{{ gitlab_base_directory }}/data:/var/opt/gitlab:Z"
-    secrets:
-      - gitlab_root_password
+      - "{{ gitlab_base_directory }}/secrets/root_password:/run/secrets/gitlab_root_password:ro,Z"
     shm_size: "256m"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:{{ gitlab_http_port }}/-/health"]
@@ -32,8 +31,3 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
-
-secrets:
-  gitlab_root_password:
-    file: "{{ gitlab_base_directory }}/secrets/root_password"
-

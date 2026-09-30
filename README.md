@@ -14,7 +14,9 @@ The final platform contains four independent GitLab projects:
 This control repository contains the Ansible roles used to deploy GitLab and
 GitLab Runner, reusable pipeline templates, deployment scripts, and the audit
 runbook. Application source and Terraform infrastructure remain in their own
-repositories as required by the subject.
+repositories as required by the subject. It is also mirrored into the
+self-hosted `crud-master/code-keeper` project so the four delivery repositories
+can include its reusable pipeline templates.
 
 ## Current milestone
 
@@ -28,6 +30,25 @@ cp inventories/hosts.yml.example inventories/hosts.yml
 cp vault.example.yml vault.yml
 ansible-vault encrypt vault.yml
 ansible-playbook playbooks/deploy-gitlab.yml \
+  --ask-vault-pass \
+  --extra-vars '@vault.yml'
+```
+
+After signing in as `root`, create a personal access token with the `api`
+scope, save it as `vault_gitlab_bootstrap_token` in the encrypted vault, and
+bootstrap the private group, repositories, and protected branches:
+
+```bash
+ansible-playbook playbooks/bootstrap-gitlab.yml \
+  --ask-vault-pass \
+  --extra-vars '@vault.yml'
+```
+
+Create a protected group Runner in GitLab with the `docker-private` tag, store
+its `glrt-` authentication token as `vault_gitlab_runner_token`, and deploy it:
+
+```bash
+ansible-playbook playbooks/deploy-runner.yml \
   --ask-vault-pass \
   --extra-vars '@vault.yml'
 ```
