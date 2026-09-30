@@ -51,10 +51,20 @@ containerize:
     - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
   script:
     - export IMAGE_URI="${ECR_REGISTRY}/cloud-design/${SERVICE_NAME}:${CI_COMMIT_SHA}"
+    - export ECR_REPOSITORY="cloud-design/${SERVICE_NAME}"
     - docker build --pull --tag "$IMAGE_URI" .
     # Publish the immutable candidate before scanning it remotely. Deployment
     # jobs still cannot run unless Trivy accepts this exact SHA-tagged image.
-    - docker push "$IMAGE_URI"
+    - >-
+      if [ "$(aws ecr batch-get-image
+      --repository-name "$ECR_REPOSITORY"
+      --image-ids "imageTag=${CI_COMMIT_SHA}"
+      --query 'images[0].imageId.imageTag'
+      --output text)" = "$CI_COMMIT_SHA" ]; then
+        echo "Immutable image already exists; reusing ${IMAGE_URI}";
+      else
+        docker push "$IMAGE_URI";
+      fi
     - >-
       docker run --rm
       --env AWS_ACCESS_KEY_ID
