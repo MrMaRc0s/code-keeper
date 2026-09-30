@@ -1,0 +1,47 @@
+stages:
+  - validate
+  - scan
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+
+default:
+  tags:
+    - docker-private
+
+validate_automation:
+  image: python:3.13.7-slim-bookworm
+  stage: validate
+  before_script:
+    - python -m pip install --no-cache-dir ansible-core==2.21.4 PyYAML==6.0.3
+    - ansible-galaxy collection install -r ansible/requirements.yml
+    - cp ansible/inventories/hosts.yml.example /tmp/hosts.yml
+  script:
+    - >-
+      for playbook in
+      ansible/playbooks/deploy-gitlab.yml
+      ansible/playbooks/bootstrap-gitlab.yml
+      ansible/playbooks/deploy-runner.yml;
+      do ansible-playbook -i /tmp/hosts.yml --syntax-check "$playbook"; done
+    - >-
+      python -c "import glob, yaml;
+      [yaml.safe_load(open(path, encoding='utf-8'))
+      for path in glob.glob('ci-templates/*.yml') + ['.gitlab-ci.yml']]"
+
+validate_scripts:
+  image: alpine:3.22.1
+  stage: validate
+  before_script:
+    - apk add --no-cache bash shellcheck
+  script:
+    - bash -n scripts/deploy-ecs-service.sh
+    - shellcheck scripts/deploy-ecs-service.sh
+
+scan_repository:
+  image:
+    name: aquasec/trivy:0.67.2
+    entrypoint: [""]
+  stage: scan
+  script:
+    - trivy fs --scanners secret --exit-code 1 --skip-version-check .
