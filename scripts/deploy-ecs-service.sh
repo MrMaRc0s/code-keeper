@@ -112,4 +112,28 @@ if ! aws ecs wait services-stable --cluster "$cluster" --services "$service"; th
   exit 1
 fi
 
+# The services-stable waiter can return a few seconds before ECS changes the
+# PRIMARY deployment's rolloutState from IN_PROGRESS to COMPLETED. Wait for
+# that explicit transition so the following verification job cannot race it.
+rollout_state=""
+for ((attempt = 1; attempt <= 30; attempt++)); do
+  rollout_state=$(aws ecs describe-services \
+    --cluster "$cluster" \
+    --services "$service" \
+    --query "services[0].deployments[?status=='PRIMARY'].rolloutState | [0]" \
+    --output text)
+
+  if [ "$rollout_state" = "COMPLETED" ] || [ "$rollout_state" = "FAILED" ]; then
+    break
+  fi
+
+  sleep 10
+done
+
+if [ "$rollout_state" != "COMPLETED" ]; then
+  echo "Error: service ${service} rollout ended in state ${rollout_state:-unknown}" >&2
+  echo "Rollback: aws ecs update-service --cluster ${cluster} --service ${service} --task-definition ${current_task_def_arn}" >&2
+  exit 1
+fi
+
 echo "Deployed ${container_name}=${image_uri} to ${service} in ${cluster} (${new_task_def_arn})."
