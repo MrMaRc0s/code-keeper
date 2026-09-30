@@ -50,7 +50,11 @@ variables:
     - test -n "${AWS_SECRET_ACCESS_KEY:-}"
     - test -n "${AWS_REGION:-}"
     - test -n "${ECR_REGISTRY:-}"
-    - curl --silent --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "${DEPLOY_SCRIPT_URL}" -o /usr/local/bin/deploy-ecs-service.sh
+    - >-
+      curl --silent --fail
+      --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      "${DEPLOY_SCRIPT_URL}"
+      --output /usr/local/bin/deploy-ecs-service.sh
     - chmod +x /usr/local/bin/deploy-ecs-service.sh
 
 .protected_main_only:
