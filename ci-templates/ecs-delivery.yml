@@ -55,7 +55,11 @@ variables:
 
 .protected_main_only:
   rules:
-    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main"'
+    - if: >-
+        $CI_COMMIT_REF_PROTECTED == "true" &&
+        $CI_COMMIT_BRANCH == "main" &&
+        $AWS_ACCESS_KEY_ID && $AWS_SECRET_ACCESS_KEY &&
+        $AWS_REGION && $ECR_REGISTRY
 
 .deploy_staging_template:
   extends: [.aws_delivery, .protected_main_only]
@@ -92,7 +96,11 @@ variables:
   needs: ["verify_staging"]
   extends: [.protected_main_only]
   rules:
-    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main"'
+    - if: >-
+        $CI_COMMIT_REF_PROTECTED == "true" &&
+        $CI_COMMIT_BRANCH == "main" &&
+        $AWS_ACCESS_KEY_ID && $AWS_SECRET_ACCESS_KEY &&
+        $AWS_REGION && $ECR_REGISTRY
       when: manual
   script:
     - echo "Approved for production by ${GITLAB_USER_LOGIN}"
