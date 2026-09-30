@@ -147,3 +147,42 @@
     - not (item.skipped | default(false))
     - item.status == 404
   no_log: true
+
+- name: Select shared pipeline project ID
+  ansible.builtin.set_fact:
+    gitlab_bootstrap_pipeline_project_id: "{{ item.json.id | int }}"
+  loop: "{{ gitlab_projects.results }}"
+  loop_control:
+    label: "{{ item.json.path_with_namespace }}"
+  when: item.json.path == gitlab_bootstrap_pipeline_project
+
+- name: Read shared pipeline project job token group allowlist
+  ansible.builtin.uri:
+    url: >-
+      {{ gitlab_bootstrap_api_url }}/projects/{{
+      gitlab_bootstrap_pipeline_project_id }}/job_token_scope/groups_allowlist
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    status_code: 200
+    return_content: true
+  register: gitlab_job_token_groups
+  changed_when: false
+  no_log: true
+
+- name: Allow delivery group to fetch shared pipeline files
+  ansible.builtin.uri:
+    url: >-
+      {{ gitlab_bootstrap_api_url }}/projects/{{
+      gitlab_bootstrap_pipeline_project_id }}/job_token_scope/groups_allowlist
+    method: POST
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_bootstrap_api_token }}"
+    body_format: json
+    body:
+      target_group_id: "{{ gitlab_bootstrap_group_id }}"
+    status_code: 201
+  when: >-
+    gitlab_bootstrap_group_id | int not in
+    (gitlab_job_token_groups.json | map(attribute='id') | map('int') | list)
+  no_log: true

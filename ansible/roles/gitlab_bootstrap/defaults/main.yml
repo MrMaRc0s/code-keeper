@@ -11,3 +11,4 @@ gitlab_bootstrap_projects:
   - cloud-infrastructure
 gitlab_bootstrap_visibility: private
 gitlab_bootstrap_default_branch: main
+gitlab_bootstrap_pipeline_project: code-keeper
