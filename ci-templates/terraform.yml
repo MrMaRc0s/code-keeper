@@ -160,6 +160,9 @@ verify_staging:
     name: staging
   script:
     - CLUSTER="${STAGING_ECS_CLUSTER:-cloud-design-staging-cluster}"
+    # Any apply that changes a task definition is still rolling out when
+    # apply finishes - poll (15s, up to 10 min) like deploy-ecs-service.sh.
+    - aws ecs wait services-stable --cluster "$CLUSTER" --services inventory-app billing-app api-gateway-app rabbit-queue billing-database inventory-database
     - >
       for SERVICE in inventory-app billing-app api-gateway-app rabbit-queue billing-database inventory-database; do
         STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0].deployments[0].rolloutState' --output text 2>/dev/null || echo "MISSING")
@@ -200,6 +203,7 @@ verify_production:
     name: production
   script:
     - CLUSTER="${PRODUCTION_ECS_CLUSTER:-cloud-design-production-cluster}"
+    - aws ecs wait services-stable --cluster "$CLUSTER" --services inventory-app billing-app api-gateway-app rabbit-queue billing-database inventory-database
     - >
       for SERVICE in inventory-app billing-app api-gateway-app rabbit-queue billing-database inventory-database; do
         STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0].deployments[0].rolloutState' --output text 2>/dev/null || echo "MISSING")
