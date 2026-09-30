@@ -5,6 +5,8 @@ services:
     container_name: "{{ gitlab_runner_container_name }}"
     restart: unless-stopped
     network_mode: host
+    security_opt:
+      - label=disable
     volumes:
       - "{{ gitlab_runner_base_directory }}/config:/etc/gitlab-runner:Z"
       - "/var/run/docker.sock:/var/run/docker.sock"

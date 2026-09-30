@@ -63,6 +63,8 @@
       - "{{ gitlab_runner_executor }}"
       - --docker-image
       - "{{ gitlab_runner_default_image }}"
+      - --docker-security-opt
+      - label=disable
       - --docker-volumes
       - "/var/run/docker.sock:/var/run/docker.sock"
   when: not gitlab_runner_config.stat.exists
@@ -73,6 +75,16 @@
     path: "{{ gitlab_runner_base_directory }}/config/config.toml"
     regexp: '^concurrent\s*='
     line: "concurrent = {{ gitlab_runner_concurrent_jobs }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Allow Runner jobs to access the Fedora Docker socket
+  ansible.builtin.lineinfile:
+    path: "{{ gitlab_runner_base_directory }}/config/config.toml"
+    regexp: '^    security_opt\s*='
+    insertafter: '^  \[runners\.docker\]$'
+    line: '    security_opt = ["label=disable"]'
     owner: root
     group: root
     mode: "0600"
